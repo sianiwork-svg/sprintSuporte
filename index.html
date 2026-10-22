@@ -1,6 +1,10 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:light}html,body{margin:0}img{max-width:100%}</style>
 <title>Sprint Suporte</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap">
 <style>
 /* Layout: cabeçalho enxuto, resumo em linha, barra de filtros e um quadro de 5 filas que rola na horizontal em telas estreitas. */
@@ -198,7 +202,8 @@ textarea.paste{min-height:180px;font-family:var(--font-mono);font-size:12px;whit
 .col[data-fila="cq"] .col-head,.grupo[data-fila="cq"] h2{background:var(--q-qa)} .col[data-fila="cq"] .dot{background:var(--dot-qa)}
 .col[data-fila="tec"] .col-head,.grupo[data-fila="tec"] h2{background:var(--q-fila)} .col[data-fila="tec"] .dot{background:var(--dot-fila)}
 </style>
-
+</head>
+<body>
 <div class="app">
   <header class="top">
     <div class="brand">
@@ -297,6 +302,10 @@ textarea.paste{min-height:180px;font-family:var(--font-mono);font-size:12px;whit
 
 <div class="toast" id="toast" role="status" hidden></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="dados-iniciais.js"></script>
 <script>
 (function(){
   var BOARDS={
@@ -407,7 +416,7 @@ textarea.paste{min-height:180px;font-family:var(--font-mono);font-size:12px;whit
   function col(){return db.collection(B().col)}
   function erroEscrita(e){
     var c=e&&e.code;
-    if(c==='invalid_argument') toast('Sem permissão para alterar. Peça acesso de colaborador.');
+    if(c==='invalid_argument'||c==='permission-denied') toast('Sem permissão para alterar. Verifique as regras do Firestore (LEIA-ME).');
     else if(c==='quota_exceeded') toast('Limite de armazenamento atingido.');
     else toast('Não foi possível salvar. Tente de novo.');
   }
@@ -577,7 +586,7 @@ textarea.paste{min-height:180px;font-family:var(--font-mono);font-size:12px;whit
       return;
     }
     if(!items.length){
-      el.innerHTML='<div class="estado"><strong>Nenhum item em '+esc(B().nome)+' ainda</strong><p>'+(canWrite?'Crie o primeiro item ou copie as linhas da planilha atual e cole em Importar da planilha. Todos que abrirem este painel veem as mudanças na hora.':'Quando alguém criar itens, eles aparecem aqui.')+'</p></div>';
+      el.innerHTML='<div class="estado"><strong>Nenhum item em '+esc(B().nome)+' ainda</strong><p>'+(canWrite?'Crie o primeiro item ou copie as linhas da planilha atual e cole em Importar da planilha. Todos que abrirem este painel veem as mudanças na hora.':'Quando alguém criar itens, eles aparecem aqui.')+'</p>'+(canWrite&&window.DADOS_INICIAIS&&(window.DADOS_INICIAIS[B().col]||[]).length?'<button type="button" class="btn primary" id="b-seed">Carregar dados iniciais ('+window.DADOS_INICIAIS[B().col].length+' itens)</button>':'')+'</div>';
       return;
     }
     var lista=filtrados();
@@ -768,25 +777,27 @@ textarea.paste{min-height:180px;font-family:var(--font-mono);font-size:12px;whit
   function csvCel(v){v=String(v==null?'':v);return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
   $('#b-exp').addEventListener('click',function(){
     var arquivo=B().arquivo, hw=aba==='hardware';
-    window.claude.use('downloads').then(function(dl){
-      if(!dl){toast('Exportação indisponível nesta visualização.');return;}
-      var linhas=[hw?['P','Atividade','Cliente','Departamento','Executor atual','Responsável Suporte','Status','Informações']
-                    :['P','Cliente','Consulta','Departamento','Suporte','Ciclo','Inclusão','Previsão','Status','Notas','Data Entrega']];
-      FILAS.forEach(function(f){
-        ordenar(f.k,items.filter(function(i){return i.fila===f.k})).forEach(function(it){
-          var ativ=(it.consulta?it.consulta+' - ':'')+(it.titulo||'');
-          linhas.push(hw?[it.p,ativ,it.cliente,f.nome,it.executor,it.suporte,it.status,it.notas]
-                        :[it.p,it.cliente,ativ,f.nome,it.suporte,fmtCicloLongo(it.ciclo),fmtData(it.inclusao),fmtData(it.previsao),it.status,it.notas,fmtData(it.entrega)]);
-        });
+    var linhas=[hw?['P','Atividade','Cliente','Departamento','Executor atual','Responsável Suporte','Status','Informações']
+                  :['P','Cliente','Consulta','Departamento','Suporte','Ciclo','Inclusão','Previsão','Status','Notas','Data Entrega']];
+    FILAS.forEach(function(f){
+      ordenar(f.k,items.filter(function(i){return i.fila===f.k})).forEach(function(it){
+        var ativ=(it.consulta?it.consulta+' - ':'')+(it.titulo||'');
+        linhas.push(hw?[it.p,ativ,it.cliente,f.nome,it.executor,it.suporte,it.status,it.notas]
+                      :[it.p,it.cliente,ativ,f.nome,it.suporte,fmtCicloLongo(it.ciclo),fmtData(it.inclusao),fmtData(it.previsao),it.status,it.notas,fmtData(it.entrega)]);
       });
-      var csv='﻿'+linhas.map(function(l){return l.map(csvCel).join(',')}).join('\r\n');
-      return dl.save({filename:arquivo+'-'+hojeISO()+'.csv',data:csv}).then(function(){toast('Arquivo salvo')},function(e){if(!e||e.code!=='declined')toast('Não foi possível salvar o arquivo.')});
-    }).catch(function(){toast('Exportação indisponível nesta visualização.')});
+    });
+    var csv='\ufeff'+linhas.map(function(l){return l.map(csvCel).join(',')}).join('\r\n');
+    var url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    var a=document.createElement('a'); a.href=url; a.download=arquivo+'-'+hojeISO()+'.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){URL.revokeObjectURL(url);a.remove()},500);
+    toast('Arquivo gerado');
   });
 
   /* ---------- eventos do quadro ---------- */
   var viewEl=$('#view');
   viewEl.addEventListener('click',function(ev){
+    if(ev.target.closest('#b-seed')){carregarIniciais();return;}
     var mais=ev.target.closest('[data-mais]');
     if(mais){showAllEntrega=mais.getAttribute('data-mais')==='1';render();return;}
     var alvo=ev.target.closest('[data-id]');
@@ -840,6 +851,18 @@ textarea.paste{min-height:180px;font-family:var(--font-mono);font-size:12px;whit
   $('#hoje').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
   try{var ab=localStorage.getItem('sprint-aba'); if(ab&&BOARDS[ab]) aba=ab;}catch(e){}
   aplicarAba(); render();
+
+  function carregarIniciais(){
+    var lista=(window.DADOS_INICIAIS||{})[B().col];
+    if(!lista||!lista.length||!db||!canWrite) return;
+    var cn=B().col, lote=db.batch(), agora=Date.now();
+    lista.forEach(function(d,i){
+      var o=Object.assign({},d), id=o.id; delete o.id;
+      o.ordem=agora+i; o.atualizadoEm=agora;
+      lote.set(db.collection(cn).doc(id),o);
+    });
+    lote.commit().then(function(){toast(lista.length+' itens carregados')}).catch(erroEscrita);
+  }
   function assinar(k){
     db.collection(BOARDS[k].col).onSnapshot(function(snap){
       dados[k]=snap.docs.map(function(d){var o=Object.assign({},d.data()||{});o.id=d.id;return o});
@@ -847,21 +870,26 @@ textarea.paste{min-height:180px;font-family:var(--font-mono);font-size:12px;whit
       if(k===aba){items=dados[k];loaded=true;}
       render();
     },function(e){
-      if(e&&e.code==='revoked'){db=null;erroBanco='O acesso a este painel foi alterado. Recarregue a página.';}
-      else{carregado[k]=true;if(k===aba)loaded=true;toast('A conexão com o banco falhou. Recarregue a página.');}
+      if(e&&e.code==='permission-denied'){db=null;erroBanco='O Firebase recusou o acesso. Publique as regras do arquivo firestore.rules no seu projeto (veja o LEIA-ME).';}
+      else{carregado[k]=true;if(k===aba)loaded=true;toast('A conexão com o Firebase falhou. Recarregue a página.');}
       render();
     });
   }
-  (async function(){
-    if(!window.claude||!window.claude.use){render();return;}
-    try{db=await window.claude.use('db')}catch(e){db=null}
-    try{user=await window.claude.use('user')}catch(e){user=null}
-    if(user){try{var cw=await user.can('data.write'); canWrite=(cw!==false)}catch(e){}}
-    if(!db){render();return;}
+  var cfg=window.FIREBASE_CONFIG;
+  if(!cfg||!cfg.apiKey||!cfg.projectId||String(cfg.apiKey).indexOf('COLE')>=0){
+    erroBanco='Falta configurar o Firebase. Abra o arquivo firebase-config.js, cole os dados do seu projeto e recarregue a página (veja o LEIA-ME).';
     render();
-    Object.keys(BOARDS).forEach(assinar);
-  })();
+  }else if(!window.firebase||!window.firebase.firestore){
+    erroBanco='Não foi possível carregar o Firebase. Verifique a conexão com a internet e recarregue.';
+    render();
+  }else{
+    try{
+      firebase.initializeApp(cfg); db=firebase.firestore();
+    }catch(e){db=null;erroBanco='Configuração do Firebase inválida: '+(e&&e.message||e);}
+    render();
+    if(db) Object.keys(BOARDS).forEach(assinar);
+  }
 })();
 </script>
-
-</body></html>
+</body>
+</html>
